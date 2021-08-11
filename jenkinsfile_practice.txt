@@ -1,0 +1,20 @@
+node {
+    stage('pull') {
+        echo 'git Clone Repository'
+        try {
+            git credentialsId: 'sjabber', url: 'https://github.com/sjabber/demojenkins' 
+        } catch(err) {
+            sh "echo error in git checkout"
+        }
+    }
+    stage('cd Test & java build') {
+        sh script:'''
+        #!/bin/bash
+        echo "This is start $(pwd)"
+        cd ./src
+        echo "This is $(pwd)"
+        javac hello.java
+        java hello
+        '''
+    }
+}
