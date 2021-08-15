@@ -1,20 +1,105 @@
-node {
-    stage('pull') {
-        echo 'git Clone Repository'
-        try {
-            git credentialsId: 'sjabber', url: 'https://github.com/sjabber/demojenkins' 
-        } catch(err) {
-            sh "echo error in git checkout"
+pipeline {
+    agent any
+
+    stages {
+        stage('git pull') {
+            steps {
+                // manage credentials에 사전에 git ssh를 등록해야함.
+                // 이렇게 설정하면 private repository일 경우에도 pull이 가능하다.
+                echo '--------------git Clone Repository--------------'
+                git credentialsId: 'sjabber', url: 'https://github.com/sjabber/demojenkins'
+            }
+
+            post {
+                failure {
+                    echo 'git pull fail...'
+                }
+            }
         }
-    }
-    stage('cd Test & java build') {
-        sh script:'''
-        #!/bin/bash
-        echo "This is start $(pwd)"
-        cd ./src
-        echo "This is $(pwd)"
-        javac hello.java
-        java hello
-        '''
+
+        stage('build') {
+            steps {
+                echo "--------------java build start---------------"
+                sh script: '''
+                #! /bin/bash
+                cd ./src
+                echo "this is $(pwd)"
+                javac hello.java
+                '''
+            }
+            post {
+                failure {
+                echo 'build fail...'
+                }
+            }
+        }
+
+        stage('transfer') {
+            steps {
+                sh script: '''
+                cd ./src
+                touch a.txt
+                pwd
+                ls -al
+                sudo -i
+                '''
+                sshPublisher(
+                //continueOnError => 이전 서버 배포 실패 이후 다른 서버에 배포할 건지 선택
+                //failOnError => 서버 게시에 문제가 있을 경우 빌드를 실패로 표시할 것인지. default 는 true
+                continueOnError: false, failOnError: true,
+                    publishers: [
+                        sshPublisherDesc(
+                            configName: "ec2-server",//Jenkins 시스템 정보(Manage Credentials)에 사전 입력한 서버 ID
+                            verbose: true,
+                            transfers: [
+                                sshTransfer(
+                                    // 전송할 파일
+                                    // 주의!!!! jenkins 워크스페이스상의 상대경로로 입력해야한다!!
+                                    // 내 jenkins 서버의 절대경로 : /var/jenkins_home/workspace/test
+                                    sourceFiles: "src/hello.class",
+                                    // sourceFiles: "test/src/hello.class",
+
+                                    //파일에서 삭제할 경로가 있다면 작성, 제거할 접두사를 의미한다.
+                                    // EX) 작업공간 A/B/C/test.jar 가 있을 때 C/test.jar로 배포하고 싶다면
+                                    //     여기에 A/B를 입력해주면 된다. 
+                                    removePrefix: "src",
+
+                                    //배포할 위치
+                                    //배포할 디렉토리의 게스트 권한 w 활성화!!
+                                    //chmod 747 ./practice 로 설정했음. 
+                                    remoteDirectory: "/practice/",
+
+                                    //원격지에서 실행할 커맨드
+                                    // 바로 실행하려면 여기에 커멘드를 적어주어도 된다.
+                                    execCommand: "" 
+                                )
+                            ]
+                        )
+                    ]
+                )
+            }
+            post {
+                failure {
+                    echo 'transfer fail...'
+                }
+            }
+        }
+        
+
+        stage('run') {
+            steps {
+                echo '--------------run java--------------'
+                sshagent(['ec2-server']) {
+                    sh '''
+                    ssh -o StrictHostKeyChecking=no ubuntu@15.165.17.133 sh hello_sh
+                    '''
+                }
+            }
+            post {
+                failure {
+                    echo 'java run fail...'
+                }
+            }
+        }
     }
 }

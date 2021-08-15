@@ -1,0 +1,24 @@
+   node('node') {
+        stage('git clone') {
+          echo 'git clone Repository'
+          try {
+            git credentialsId: 'sjabber', url: 'https://github.com/sjabber/redteam_server.git'
+          } catch(err) {
+            sh "echo error in git checkout"
+          }
+        }
+
+        // aws s3 에 파일을 올림
+        //이전에 반드시 EC2 instance profile 을 등록해야한다.
+        stage('Upload') {
+          try {
+            withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'deploytos3', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                sh "aws s3 ls"
+                sh "aws s3 mb s3://sjabber-redteam"
+                sh "aws s3 cp -r redteam s3://sjabber-redteam"
+            }
+          } catch(err) {
+            sh "echo error in sending artifacts to s3"
+          }
+        }
+    }
